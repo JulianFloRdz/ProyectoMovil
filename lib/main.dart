@@ -1,441 +1,178 @@
-// Copyright 2020, the Chromium project authors.  Please see the AUTHORS file
-// for details. All rights reserved. Use of this source code is governed by a
-// BSD-style license that can be found in the LICENSE file.
-
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_core/firebase_core.dart';
+import 'package:provider/provider.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
-import 'firebase_options.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'auth/firebase_auth/firebase_user_provider.dart';
+import 'auth/firebase_auth/auth_util.dart';
 
-/// Requires that a Firestore emulator is running locally.
-/// See https://firebase.flutter.dev/docs/firestore/usage#emulator-usage
-bool shouldUseFirestoreEmulator = false;
+import 'backend/firebase/firebase_config.dart';
+import 'flutter_flow/flutter_flow_theme.dart';
+import 'flutter_flow/flutter_flow_util.dart';
+import 'flutter_flow/internationalization.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'flutter_flow/nav/nav.dart';
+import 'index.dart';
 
-Future<void> main() async {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await initFirebase();
 
-  if (shouldUseFirestoreEmulator) {
-    FirebaseFirestore.instance.useFirestoreEmulator('localhost', 8080);
+  await FlutterFlowTheme.initialize();
+
+  final appState = FFAppState(); // Initialize FFAppState
+  await appState.initializePersistedState();
+
+  runApp(ChangeNotifierProvider(
+    create: (context) => appState,
+    child: MyApp(),
+  ));
+}
+
+class MyApp extends StatefulWidget {
+  // This widget is the root of your application.
+  @override
+  State<MyApp> createState() => _MyAppState();
+
+  static _MyAppState of(BuildContext context) =>
+      context.findAncestorStateOfType<_MyAppState>()!;
+}
+
+class _MyAppState extends State<MyApp> {
+  Locale? _locale;
+  ThemeMode _themeMode = FlutterFlowTheme.themeMode;
+
+  late Stream<BaseAuthUser> userStream;
+
+  late AppStateNotifier _appStateNotifier;
+  late GoRouter _router;
+
+  final authUserSub = authenticatedUserStream.listen((_) {});
+
+  @override
+  void initState() {
+    super.initState();
+    _appStateNotifier = AppStateNotifier();
+    _router = createRouter(_appStateNotifier);
+    userStream = collectorsRealmFirebaseUserStream()
+      ..listen((user) => _appStateNotifier.update(user));
+    jwtTokenStream.listen((_) {});
+    Future.delayed(
+      Duration(seconds: 1),
+      () => _appStateNotifier.stopShowingSplashImage(),
+    );
   }
-  runApp(FirestoreExampleApp());
-}
 
-/// A reference to the list of movies.
-/// We are using `withConverter` to ensure that interactions with the collection
-/// are type-safe.
-final moviesRef = FirebaseFirestore.instance
-    .collection('firestore-example-app')
-    .withConverter<Movie>(
-  fromFirestore: (snapshots, _) => Movie.fromJson(snapshots.data()!),
-  toFirestore: (movie, _) => movie.toJson(),
-);
+  @override
+  void dispose() {
+    authUserSub.cancel();
 
-/// The different ways that we can filter/sort movies.
-enum MovieQuery {
-  year,
-  likesAsc,
-  likesDesc,
-  rated,
-  sciFi,
-  fantasy,
-}
-
-extension on Query<Movie> {
-  /// Create a firebase query from a [MovieQuery]
-  Query<Movie> queryBy(MovieQuery query) {
-    switch (query) {
-      case MovieQuery.fantasy:
-        return where('genre', arrayContainsAny: ['Fantasy']);
-
-      case MovieQuery.sciFi:
-        return where('genre', arrayContainsAny: ['Sci-Fi']);
-
-      case MovieQuery.likesAsc:
-      case MovieQuery.likesDesc:
-        return orderBy('likes', descending: query == MovieQuery.likesDesc);
-
-      case MovieQuery.year:
-        return orderBy('year', descending: true);
-
-      case MovieQuery.rated:
-        return orderBy('rated', descending: true);
-    }
+    super.dispose();
   }
-}
 
-/// The entry point of the application.
-///
-/// Returns a [MaterialApp].
-class FirestoreExampleApp extends StatelessWidget {
+  void setLocale(String language) {
+    setState(() => _locale = createLocale(language));
+  }
+
+  void setThemeMode(ThemeMode mode) => setState(() {
+        _themeMode = mode;
+        FlutterFlowTheme.saveThemeMode(mode);
+      });
+
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Firestore Example App',
-      theme: ThemeData.dark(),
-      home: const Scaffold(
-        body: Center(child: FilmList()),
-      ),
+    return MaterialApp.router(
+      title: 'Collectors Realm',
+      localizationsDelegates: [
+        FFLocalizationsDelegate(),
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      locale: _locale,
+      supportedLocales: const [Locale('en', '')],
+      theme: ThemeData(brightness: Brightness.light),
+      darkTheme: ThemeData(brightness: Brightness.dark),
+      themeMode: _themeMode,
+      routeInformationParser: _router.routeInformationParser,
+      routerDelegate: _router.routerDelegate,
     );
   }
 }
 
-/// Holds all example app films
-class FilmList extends StatefulWidget {
-  const FilmList({Key? key}) : super(key: key);
+class NavBarPage extends StatefulWidget {
+  NavBarPage({Key? key, this.initialPage, this.page}) : super(key: key);
+
+  final String? initialPage;
+  final Widget? page;
 
   @override
-  _FilmListState createState() => _FilmListState();
+  _NavBarPageState createState() => _NavBarPageState();
 }
 
-class _FilmListState extends State<FilmList> {
-  MovieQuery query = MovieQuery.year;
+/// This is the private State class that goes with NavBarPage.
+class _NavBarPageState extends State<NavBarPage> {
+  String _currentPageName = 'HomePage';
+  late Widget? _currentPage;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentPageName = widget.initialPage ?? _currentPageName;
+    _currentPage = widget.page;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final tabs = {
+      'HomePage': HomePageWidget(),
+      'Search': SearchWidget(),
+      'Info': InfoWidget(),
+    };
+    final currentIndex = tabs.keys.toList().indexOf(_currentPageName);
+
     return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text('Firestore Example: Movies'),
-
-            // This is a example use for 'snapshots in sync'.
-            // The view reflects the time of the last Firestore sync; which happens any time a field is updated.
-            StreamBuilder(
-              stream: FirebaseFirestore.instance.snapshotsInSync(),
-              builder: (context, _) {
-                return Text(
-                  'Latest Snapshot: ${DateTime.now()}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                );
-              },
-            )
-          ],
-        ),
-        actions: <Widget>[
-          PopupMenuButton<MovieQuery>(
-            onSelected: (value) => setState(() => query = value),
-            icon: const Icon(Icons.sort),
-            itemBuilder: (BuildContext context) {
-              return [
-                const PopupMenuItem(
-                  value: MovieQuery.year,
-                  child: Text('Sort by Year'),
-                ),
-                const PopupMenuItem(
-                  value: MovieQuery.rated,
-                  child: Text('Sort by Rated'),
-                ),
-                const PopupMenuItem(
-                  value: MovieQuery.likesAsc,
-                  child: Text('Sort by Likes ascending'),
-                ),
-                const PopupMenuItem(
-                  value: MovieQuery.likesDesc,
-                  child: Text('Sort by Likes descending'),
-                ),
-                const PopupMenuItem(
-                  value: MovieQuery.fantasy,
-                  child: Text('Filter genre Fantasy'),
-                ),
-                const PopupMenuItem(
-                  value: MovieQuery.sciFi,
-                  child: Text('Filter genre Sci-Fi'),
-                ),
-              ];
-            },
+      body: _currentPage ?? tabs[_currentPageName],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: currentIndex,
+        onTap: (i) => setState(() {
+          _currentPage = null;
+          _currentPageName = tabs.keys.toList()[i];
+        }),
+        backgroundColor: Colors.white,
+        selectedItemColor: FlutterFlowTheme.of(context).primary,
+        unselectedItemColor: Color(0x8A000000),
+        showSelectedLabels: false,
+        showUnselectedLabels: false,
+        type: BottomNavigationBarType.fixed,
+        items: <BottomNavigationBarItem>[
+          BottomNavigationBarItem(
+            icon: Icon(
+              Icons.home_outlined,
+              size: 24.0,
+            ),
+            label: 'Home',
+            tooltip: '',
           ),
-          PopupMenuButton<String>(
-            onSelected: (_) => _resetLikes(),
-            itemBuilder: (BuildContext context) {
-              return [
-                const PopupMenuItem(
-                  value: 'reset_likes',
-                  child: Text('Reset like counts (WriteBatch)'),
-                ),
-              ];
-            },
+          BottomNavigationBarItem(
+            icon: Icon(
+              Icons.shopping_cart,
+              size: 24.0,
+            ),
+            label: 'Shop',
+            tooltip: '',
           ),
-        ],
-      ),
-      body: StreamBuilder<QuerySnapshot<Movie>>(
-        stream: moviesRef.queryBy(query).snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(
-              child: Text(snapshot.error.toString()),
-            );
-          }
-
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final data = snapshot.requireData;
-
-          return ListView.builder(
-            itemCount: data.size,
-            itemBuilder: (context, index) {
-              return _MovieItem(
-                data.docs[index].data(),
-                data.docs[index].reference,
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
-
-  Future<void> _resetLikes() async {
-    final movies = await moviesRef.get(
-      const GetOptions(
-        serverTimestampBehavior: ServerTimestampBehavior.previous,
-      ),
-    );
-
-    WriteBatch batch = FirebaseFirestore.instance.batch();
-
-    for (final movie in movies.docs) {
-      batch.update(movie.reference, {'likes': 0});
-    }
-    await batch.commit();
-  }
-}
-
-/// A single movie row.
-class _MovieItem extends StatelessWidget {
-  _MovieItem(this.movie, this.reference);
-
-  final Movie movie;
-  final DocumentReference<Movie> reference;
-
-  /// Returns the movie poster.
-  Widget get poster {
-    return SizedBox(
-      width: 100,
-      child: Image.network(movie.poster),
-    );
-  }
-
-  /// Returns movie details.
-  Widget get details {
-    return Padding(
-      padding: const EdgeInsets.only(left: 8, right: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          title,
-          metadata,
-          genres,
-          Likes(
-            reference: reference,
-            currentLikes: movie.likes,
+          BottomNavigationBarItem(
+            icon: Icon(
+              Icons.info_outline_rounded,
+              size: 24.0,
+            ),
+            label: 'Info',
+            tooltip: '',
           )
         ],
       ),
     );
-  }
-
-  /// Return the movie title.
-  Widget get title {
-    return Text(
-      '${movie.title} (${movie.year})',
-      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-    );
-  }
-
-  /// Returns metadata about the movie.
-  Widget get metadata {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: Text('Rated: ${movie.rated}'),
-          ),
-          Text('Runtime: ${movie.runtime}'),
-        ],
-      ),
-    );
-  }
-
-  /// Returns a list of genre movie tags.
-  List<Widget> get genreItems {
-    return [
-      for (final genre in movie.genre)
-        Padding(
-          padding: const EdgeInsets.only(right: 2),
-          child: Chip(
-            backgroundColor: Colors.lightBlue,
-            label: Text(
-              genre,
-              style: const TextStyle(color: Colors.white),
-            ),
-          ),
-        )
-    ];
-  }
-
-  /// Returns all genres.
-  Widget get genres {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Wrap(
-        children: genreItems,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4, top: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          poster,
-          Flexible(child: details),
-        ],
-      ),
-    );
-  }
-}
-
-/// Displays and manages the movie 'like' count.
-class Likes extends StatefulWidget {
-  /// Constructs a new [Likes] instance with a given [DocumentReference] and
-  /// current like count.
-  Likes({
-    Key? key,
-    required this.reference,
-    required this.currentLikes,
-  }) : super(key: key);
-
-  /// The reference relating to the counter.
-  final DocumentReference<Movie> reference;
-
-  /// The number of current likes (before manipulation).
-  final int currentLikes;
-
-  @override
-  _LikesState createState() => _LikesState();
-}
-
-class _LikesState extends State<Likes> {
-  /// A local cache of the current likes, used to immediately render the updated
-  /// likes count after an update, even while the request isn't completed yet.
-  late int _likes = widget.currentLikes;
-
-  Future<void> _onLike() async {
-    final currentLikes = _likes;
-
-    // Increment the 'like' count straight away to show feedback to the user.
-    setState(() {
-      _likes = currentLikes + 1;
-    });
-
-    try {
-      // Update the likes using a transaction.
-      // We use a transaction because multiple users could update the likes count
-      // simultaneously. As such, our likes count may be different from the likes
-      // count on the server.
-      int newLikes = await FirebaseFirestore.instance
-          .runTransaction<int>((transaction) async {
-        DocumentSnapshot<Movie> movie =
-        await transaction.get<Movie>(widget.reference);
-
-        if (!movie.exists) {
-          throw Exception('Document does not exist!');
-        }
-
-        int updatedLikes = movie.data()!.likes + 1;
-        transaction.update(widget.reference, {'likes': updatedLikes});
-        return updatedLikes;
-      });
-
-      // Update with the real count once the transaction has completed.
-      setState(() => _likes = newLikes);
-    } catch (e, s) {
-      print(s);
-      print('Failed to update likes for document! $e');
-
-      // If the transaction fails, revert back to the old count
-      setState(() => _likes = currentLikes);
-    }
-  }
-
-  @override
-  void didUpdateWidget(Likes oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // The likes on the server changed, so we need to update our local cache to
-    // keep things in sync. Otherwise if another user updates the likes,
-    // we won't see the update.
-    if (widget.currentLikes != oldWidget.currentLikes) {
-      _likes = widget.currentLikes;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        IconButton(
-          iconSize: 20,
-          onPressed: _onLike,
-          icon: const Icon(Icons.favorite),
-        ),
-        Text('$_likes likes'),
-      ],
-    );
-  }
-}
-
-@immutable
-class Movie {
-  Movie({
-    required this.genre,
-    required this.likes,
-    required this.poster,
-    required this.rated,
-    required this.runtime,
-    required this.title,
-    required this.year,
-  });
-
-  Movie.fromJson(Map<String, Object?> json)
-      : this(
-    genre: (json['genre']! as List).cast<String>(),
-    likes: json['likes']! as int,
-    poster: json['poster']! as String,
-    rated: json['rated']! as String,
-    runtime: json['runtime']! as String,
-    title: json['title']! as String,
-    year: json['year']! as int,
-  );
-
-  final String poster;
-  final int likes;
-  final String title;
-  final int year;
-  final String runtime;
-  final String rated;
-  final List<String> genre;
-
-  Map<String, Object?> toJson() {
-    return {
-      'genre': genre,
-      'likes': likes,
-      'poster': poster,
-      'rated': rated,
-      'runtime': runtime,
-      'title': title,
-      'year': year,
-    };
   }
 }

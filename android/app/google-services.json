@@ -1,34 +1,49 @@
 {
   "project_info": {
-    "project_number": "973147789363",
-    "project_id": "ejemplo2023-c4335",
-    "storage_bucket": "ejemplo2023-c4335.appspot.com"
+    "project_number": "944703091545",
+    "project_id": "collectorsrealm-d865a",
+    "storage_bucket": "collectorsrealm-d865a.appspot.com"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:973147789363:android:9ee2885b03376112776b46",
+        "mobilesdk_app_id": "1:944703091545:android:090f8236bdf68a2d4ed248",
         "android_client_info": {
-          "package_name": "com.example.ejemploauth"
+          "package_name": "com.mycompany.collectorsrealm"
         }
       },
       "oauth_client": [
         {
-          "client_id": "973147789363-44oqtnqqbtbcl7octppsbub3hqkppjeq.apps.googleusercontent.com",
+          "client_id": "944703091545-4dsbn0ns5vefaf9gd6gm5vs1r8ke5t4a.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mycompany.collectorsrealm",
+            "certificate_hash": "9bbb3186b2189ef16d8f272bdab59362c395cbb4"
+          }
+        },
+        {
+          "client_id": "944703091545-2191q0ph2tl8v1sfk769uc9ut520m2b3.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyBX2T1MhtpNnzZW-dtwr8Ry2qAodv_RrYk"
+          "current_key": "AIzaSyC7MhzWAETlvqfKLH2PuKI_YFQ8u1YyNR8"
         }
       ],
       "services": {
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "973147789363-44oqtnqqbtbcl7octppsbub3hqkppjeq.apps.googleusercontent.com",
+              "client_id": "944703091545-2191q0ph2tl8v1sfk769uc9ut520m2b3.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "944703091545-1v61mnn7rlqpcdo1a3c1fl94uuim555j.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.mycompany.collectorsrealm"
+              }
             }
           ]
         }
